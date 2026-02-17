@@ -3,112 +3,114 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Bulanga SS Progressive Studio</title>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+    <title>Bulanga SS | Pro Studio</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     <style>
-        :root { --bg: #000; --gold: #ffd700; --cyan: #00f2ff; }
-        body { margin: 0; background: var(--bg); color: white; font-family: 'Arial Black', sans-serif; overflow: hidden; }
+        :root { --gold: #D4AF37; --bg: #0a0a0a; --glass: rgba(255,255,255,0.1); }
+        body { margin: 0; background: var(--bg); color: white; font-family: sans-serif; height: 100vh; display: flex; flex-direction: column; }
         
-        .header { position: fixed; top: 0; width: 100%; padding: 15px; text-align: center; z-index: 100; background: linear-gradient(to bottom, rgba(0,0,0,0.8), transparent); }
-        .school-name { color: var(--gold); font-size: 1.2rem; margin: 0; text-shadow: 0 0 10px var(--gold); }
+        /* Dynamic Header */
+        .header { padding: 15px; text-align: center; border-bottom: 1px solid var(--glass); }
+        .school-name { color: var(--gold); font-size: 1.2rem; letter-spacing: 2px; margin: 0; }
 
-        #capture-zone { width: 100vw; height: 100vh; display: flex; justify-content: center; align-items: center; background: radial-gradient(circle, #111, #000); }
-        video { width: 90%; border-radius: 15px; border: 2px solid rgba(255,255,255,0.2); }
+        /* The Viewport */
+        #studio-core { flex: 1; position: relative; overflow: hidden; display: flex; justify-content: center; align-items: center; background: #000; }
+        video, #overlay-img { position: absolute; width: 100%; height: 100%; object-fit: cover; }
+        #overlay-img { z-index: 5; display: none; pointer-events: none; }
 
-        .ui { position: fixed; bottom: 20px; width: 100%; display: flex; flex-direction: column; align-items: center; gap: 8px; z-index: 200; }
-        .controls { display: flex; gap: 5px; flex-wrap: wrap; justify-content: center; }
-        
-        button, label { 
-            background: rgba(0,0,0,0.6); border: 1px solid var(--cyan); 
-            color: var(--cyan); padding: 8px 12px; border-radius: 5px; font-size: 10px; font-weight: bold;
+        /* Professional Control Dock */
+        .control-dock { 
+            display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; 
+            padding: 20px; background: rgba(0,0,0,0.9); border-top: 1px solid var(--gold);
         }
-        .rec-active { background: #ff3333 !important; color: white !important; border: none; }
+        
+        button { 
+            padding: 15px 5px; border-radius: 8px; border: 1px solid var(--glass);
+            background: var(--glass); color: white; font-weight: bold; font-size: 10px;
+        }
+        .active-rec { background: #ff3333 !important; animation: blink 1s infinite; }
+        @keyframes blink { 50% { opacity: 0.5; } }
+        
+        #file-input { display: none; }
     </style>
 </head>
 <body>
 
-<div id="capture-zone">
-    <div class="header">
-        <h1 class="school-name" id="title">BULANGA SECONDARY SCHOOL</h1>
-        <small>"PROGRESSIVE"</small>
-    </div>
-    <video id="v-out" autoplay playsinline muted></video>
+<div class="header">
+    <h1 class="school-name">BULANGA SECONDARY SCHOOL</h1>
+    <small style="letter-spacing:3px; color: grey;">PROGRESSIVE STUDIO</small>
 </div>
 
-<div class="ui">
-    <div class="controls">
-        <button onclick="initApp()">🎤 Start</button>
-        <button onclick="toggleNoise()">🔇 Noise</button>
-        <button onclick="cycleVoice()">🎙 Voice</button>
-        <button onclick="takeScreenshot()">📸 Snap</button>
-        <button id="rec-btn" onclick="toggleRecord()">⏺ REC</button>
-    </div>
+<div id="studio-core">
+    <video id="v-out" autoplay playsinline muted></video>
+    <img id="overlay-img" src="" alt="Gallery Overlay">
 </div>
+
+<div class="control-dock">
+    <button onclick="initApp()" id="status-btn">🟢 START ENGINE</button>
+    <button onclick="document.getElementById('file-input').click()">📁 UPLOAD</button>
+    <button onclick="takeScreenshot()">📸 SNAP</button>
+    <button id="rec-btn" onclick="handleRecord()" style="grid-column: span 3; background: #222; border: 1px solid #ff3333; color: #ff3333;">⏺ START RECORDING</button>
+</div>
+
+<input type="file" id="file-input" accept="image/*" onchange="loadGalleryImage(event)">
 
 <script>
+    let stream, recorder, chunks = [];
     const vOut = document.getElementById('v-out');
-    const title = document.getElementById('title');
-    let audioCtx, analyser, mic, filter, pitchShift, recorder, chunks = [];
+    const recBtn = document.getElementById('rec-btn');
+    const overlay = document.getElementById('overlay-img');
 
     async function initApp() {
-        const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+        stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
         vOut.srcObject = stream;
-        audioCtx = new AudioContext();
-        mic = audioCtx.createMediaStreamSource(stream);
-        filter = audioCtx.createBiquadFilter(); filter.type = "highpass"; filter.frequency.value = 0;
-        pitchShift = audioCtx.createDelay(); pitchShift.delayTime.value = 0;
-        analyser = audioCtx.createAnalyser();
-        mic.connect(filter).connect(pitchShift).connect(analyser);
-        analyser.connect(audioCtx.destination);
-        loop();
+        document.getElementById('status-btn').innerText = "LIVE";
+        document.getElementById('status-btn').style.color = "#22c55e";
     }
 
-    function loop() {
-        const data = new Uint8Array(analyser.frequencyBinCount);
-        analyser.getByteFrequencyData(data);
-        const vol = data.reduce((a, b) => a + b) / data.length;
-        title.style.transform = `scale(${1 + vol/120})`;
-        requestAnimationFrame(loop);
+    // UPLOAD FROM GALLERY
+    function loadGalleryImage(event) {
+        const reader = new FileReader();
+        reader.onload = () => {
+            overlay.src = reader.result;
+            overlay.style.display = 'block';
+        };
+        reader.readAsDataURL(event.target.files[0]);
     }
 
-    function toggleNoise() { filter.frequency.value = filter.frequency.value === 0 ? 200 : 0; }
-    
-    let vMode = 0;
-    function cycleVoice() {
-        vMode = (vMode + 1) % 3;
-        pitchShift.delayTime.value = [0, 0.01, 0.05][vMode];
-    }
-
+    // SAVE PICTURE TO GALLERY
     async function takeScreenshot() {
-        const canvas = await html2canvas(document.getElementById('capture-zone'));
+        const canvas = await html2canvas(document.getElementById('studio-core'));
         const link = document.createElement('a');
-        link.download = `Bulanga_Snap_${Date.now()}.png`;
-        link.href = canvas.toDataURL();
+        link.download = `Bulanga_Capture_${Date.now()}.png`;
+        link.href = canvas.toDataURL("image/png");
         link.click();
     }
 
-    async function toggleRecord() {
-        const btn = document.getElementById('rec-btn');
+    // REAL RECORDING LOGIC
+    function handleRecord() {
         if (recorder?.state === "recording") {
             recorder.stop();
-            btn.classList.remove('rec-active');
+            recBtn.innerText = "⏺ START RECORDING";
+            recBtn.classList.remove('active-rec');
         } else {
             chunks = [];
-            const stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
             recorder = new MediaRecorder(stream);
             recorder.ondataavailable = e => chunks.push(e.data);
             recorder.onstop = () => {
-                const blob = new Blob(chunks, { type: 'video/webm' });
+                const blob = new Blob(chunks, { type: 'video/mp4' });
+                const url = URL.createObjectURL(blob);
                 const a = document.createElement('a');
-                a.href = URL.createObjectURL(blob);
-                a.download = "Bulanga_Progressive_Export.webm";
+                a.href = url;
+                a.download = "Studio_Export.mp4";
                 a.click();
             };
             recorder.start();
-            btn.classList.add('rec-active');
+            recBtn.innerText = "⏹ STOP RECORDING";
+            recBtn.classList.add('active-rec');
         }
     }
 </script>
 </body>
 </html>
+
